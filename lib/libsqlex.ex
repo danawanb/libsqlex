@@ -3,11 +3,23 @@ defmodule LibSqlEx do
   Documentation for `Libsqlex`.
 
   doesn't support handle_fetch, declare,  & deallocate
+
+  ## Features
+
+  - Connection handling via Rust NIF
+  - Transaction support (`begin`, `commit`, `rollback`)
+  - Query execution in both transactional and non-transactional contexts
+
   """
 
   use DBConnection
 
   @impl true
+  @doc """
+  Opens a connection to LibSQL using the native Rust layer.
+
+  Returns `{:ok, state}` on success or `{:error, reason}` on failure. Automatically using remote replica if the opts provided database, uri, and auth token.
+  """
   def connect(opts) do
     case LibSqlEx.Native.connect(opts, LibSqlEx.State.detect_mode(opts)) do
       conn_id when is_binary(conn_id) ->
@@ -22,6 +34,9 @@ defmodule LibSqlEx do
   end
 
   @impl true
+  @doc """
+  Pings the current connection to ensure it is still alive.
+  """
   def ping(%LibSqlEx.State{conn_id: conn_id} = state) do
     case LibSqlEx.Native.ping(conn_id) do
       true -> {:ok, state}
@@ -30,12 +45,19 @@ defmodule LibSqlEx do
   end
 
   @impl true
+  @doc """
+  Disconnects from the database by closing the underlying native connection by deleting the connection registr.
+  """
   def disconnect(_opts, %LibSqlEx.State{conn_id: conn_id, trx_id: _trx_id} = state) do
     # return :ok on success
     LibSqlEx.Native.close_conn(conn_id, :conn_id, state)
   end
 
   @impl true
+  @doc """
+  Executes an SQL query, delegating to transactional or non-transactional logic
+  depending on the connection state. 
+  """
   def handle_execute(
         query,
         args,
@@ -49,6 +71,9 @@ defmodule LibSqlEx do
   end
 
   @impl true
+  @doc """
+  Begins a new database transaction.
+  """
   def handle_begin(_opts, state) do
     case LibSqlEx.Native.begin(state) do
       {:ok, new_state} -> {:ok, :begin, new_state}
@@ -57,6 +82,9 @@ defmodule LibSqlEx do
   end
 
   @impl true
+  @doc """
+  Commits the current transaction. The state must provide a uuid string of trx_id/transaction id
+  """
   def handle_commit(_opts, state) do
     case LibSqlEx.Native.commit(
            %LibSqlEx.State{conn_id: conn_id, trx_id: _trx_id, mode: mode} = state
@@ -70,6 +98,9 @@ defmodule LibSqlEx do
   end
 
   @impl true
+  @doc """
+  Rollback the current transaction.
+  """
   def handle_rollback(_opts, %LibSqlEx.State{conn_id: conn_id, trx_id: _trx_id} = state) do
     case LibSqlEx.Native.rollback(state) do
       {:ok, _} ->
@@ -81,6 +112,9 @@ defmodule LibSqlEx do
   end
 
   @impl true
+  @doc """
+  Closes the query. Currently a no-op.
+  """
   def handle_close(_query, _opts, state) do
     {:ok, %LibSqlEx.Result{}, state}
   end
