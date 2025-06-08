@@ -1,0 +1,17 @@
+[package]
+name = "libsqlex"
+version = "0.1.0"
+authors = []
+edition = "2021"
+
+[lib]
+name = "libsqlex"
+crate-type = ["cdylib"]
+
+[dependencies]
+lazy_static = "1.5.0"
+libsql = "0.9.9"
+once_cell = "1.21.3"
+rustler = "0.36.1"
+tokio = "1.45.1"
+uuid = "1.17.0"
