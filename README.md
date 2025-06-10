@@ -1,7 +1,6 @@
 # Libsqlex
 
-LibSqlEx is an Elixir database adapter built on top of Rust NIFs to provide a native driver connection to libSQL/Turso.
-Support Local, Remote Replica, and Remote Only via options.
+LibSqlEx is an unofficial Elixir database adapter built on top of Rust NIFs, providing a native driver connection to libSQL/Turso. It supports Local, Remote Replica, and Remote Only modes via configuration options.
 
 ⚠️ Currently, it does not support cursor operations such as fetch, declare, and deallocate. 
 
@@ -101,7 +100,4 @@ defmodule Example do
   end
 end
 ```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/libsqlex>.
+<https://hex.pm/packages/libsqlex>.
