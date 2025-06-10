@@ -3,11 +3,11 @@
 LibSqlEx is an Elixir database adapter built on top of Rust NIFs to provide a native driver connection to libSQL/Turso.
 Support Local, Remote Replica, and Remote Only via options.
 
-⚠️ Currently, it does not support cursor operations such as fetch, declare, and deallocate.
+⚠️ Currently, it does not support cursor operations such as fetch, declare, and deallocate. 
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
+the package can be installed
 by adding `libsqlex` to your list of dependencies in `mix.exs`:
 
 ```elixir
@@ -28,7 +28,9 @@ defmodule Example do
     opts = [
       uri: System.get_env("LIBSQL_URI"),
       auth_token: System.get_env("LIBSQL_TOKEN"),
-      database: "bar.db"
+      database: "bar.db",
+      # false if disable auto sync local and remote
+      sync: true,
     ]
     case LibSqlEx.connect(opts) do
       {:ok, state} ->
@@ -48,6 +50,50 @@ defmodule Example do
 
         {:ok, select, _state} = LibSqlEx.handle_execute("SELECT * FROM USERS;", [], [], state)
         IO.inspect(select, label: "Select Result")
+
+      {:error, reason} ->
+        IO.puts("Failed to connect: #{inspect(reason)}")
+    end
+  end
+end
+```
+
+## Local Opts
+```elixir
+    opts = [
+      database: "bar.db",
+    ]
+
+```
+
+## Remote Only Opts
+```elixir
+
+    opts = [
+      uri: System.get_env("LIBSQL_URI"),
+      auth_token: System.get_env("LIBSQL_TOKEN"),
+    ]
+```
+
+### Manual Sync
+```elixir
+defmodule Example do
+  alias LibSqlEx.State
+
+  def run_query do
+    # Connect to the database via remote replica
+    opts = [
+      uri: System.get_env("LIBSQL_URI"),
+      auth_token: System.get_env("LIBSQL_TOKEN"),
+      database: "bar.db",
+      sync: false,
+    ]
+    case LibSqlEx.connect(opts) do
+      {:ok, state} ->
+        {:ok, insert, _state} = LibSqlEx.handle_execute("INSERT INTO users (name) VALUES (?)", ["Alice"], [], state)
+        IO.inspect(insert, label: "Insert Table Result")
+
+        {:ok, _} =  LibSqlEx.Native.sync(state);
 
       {:error, reason} ->
         IO.puts("Failed to connect: #{inspect(reason)}")

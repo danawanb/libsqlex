@@ -6,7 +6,9 @@ defmodule LibSqlExTest do
     opts = [
       uri: System.get_env("LIBSQL_URI"),
       auth_token: System.get_env("LIBSQL_TOKEN"),
-      database: "bar.db"
+      database: "bar.db",
+      # sync is optional
+      sync: true
     ]
 
     {:ok, opts: opts}
@@ -208,5 +210,68 @@ defmodule LibSqlExTest do
     {:ok, state} = LibSqlEx.connect(state[:opts])
 
     assert {:error, _, _} = LibSqlEx.handle_commit([], state)
+  end
+
+  # passed
+  @tag :skip
+  test "local no sync", state do
+    local = [
+      database: "bar.db"
+    ]
+
+    {:ok, state} = LibSqlEx.connect(local)
+
+    query = %LibSqlEx.Query{statement: "INSERT INTO users (name, email) values (?1, ?2)"}
+
+    params = ["danawanb", "nosync@gmail.com"]
+    res_execute = LibSqlEx.handle_execute(query, params, [], state)
+
+    assert {:ok, _, _, _} = res_execute
+
+    remote_only = [
+      uri: System.get_env("LIBSQL_URI"),
+      auth_token: System.get_env("LIBSQL_TOKEN")
+    ]
+
+    {:ok, remote_state} = LibSqlEx.connect(remote_only)
+
+    query_select = "SELECT * FROM users WHERE email = ? LIMIT 1"
+    select_execute = LibSqlEx.handle_execute(query_select, ["nosync@gmail.com"], [], remote_state)
+
+    assert {:ok, _, %LibSqlEx.Result{command: :select, columns: [], rows: [], num_rows: 0}, _} =
+             select_execute
+  end
+
+  test "manual sync", state do
+    local = [
+      database: "bar.db"
+    ]
+
+    {:ok, state} = LibSqlEx.connect(local)
+
+    query = %LibSqlEx.Query{statement: "INSERT INTO users (name, email) values (?1, ?2)"}
+
+    params = ["danawanb", "manualsync@gmail.com"]
+    res_execute = LibSqlEx.handle_execute(query, params, [], state)
+
+    assert {:ok, _, _, _} = res_execute
+
+    remote_only = [
+      uri: System.get_env("LIBSQL_URI"),
+      auth_token: System.get_env("LIBSQL_TOKEN"),
+      database: "bar.db"
+    ]
+
+    {:ok, remote_state} = LibSqlEx.connect(remote_only)
+
+    syncx = LibSqlEx.Native.sync(remote_state)
+
+    query_select = "SELECT * FROM users WHERE email = ? LIMIT 1"
+    assert {:ok, "success sync"} = syncx
+
+    select_execute =
+      LibSqlEx.handle_execute(query_select, ["manualsync@gmail.com"], [], remote_state)
+
+    assert {:ok, _, _, _} = select_execute
   end
 end

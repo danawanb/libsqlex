@@ -25,7 +25,6 @@ libsqlex-*.tar
 # Rust binary artifacts
 /target/
 
-/priv
 
 bar.db
 bar.db-info

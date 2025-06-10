@@ -33,7 +33,9 @@ atoms! {
     remote_replica,
     ok,
     conn_id,
-    trx_id
+    trx_id,
+    disable_sync,
+    enable_sync
 }
 
 enum Mode {
@@ -119,7 +121,7 @@ pub fn handle_status_transaction(trx_id: &str) -> NifResult<rustler::Atom> {
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-pub fn sync(conn_id: &str, mode: Atom) -> NifResult<(rustler::Atom, String)> {
+pub fn do_sync(conn_id: &str, mode: Atom) -> NifResult<(rustler::Atom, String)> {
     let conn_map = CONNECTION_REGISTRY.lock().unwrap();
     let client = conn_map
         .get(conn_id)
@@ -147,15 +149,16 @@ pub fn sync(conn_id: &str, mode: Atom) -> NifResult<(rustler::Atom, String)> {
 
 #[rustler::nif(schedule = "DirtyIo")]
 pub fn commit_or_rollback_transaction(
-    trx_id: String,
+    trx_id: &str,
     conn_id: &str,
     mode: Atom,
+    syncx: Atom,
     param: &str,
 ) -> NifResult<(rustler::Atom, String)> {
     let trx = TXN_REGISTRY
         .lock()
         .unwrap()
-        .remove(&trx_id)
+        .remove(trx_id)
         .ok_or_else(|| rustler::Error::Term(Box::new("Transaction not found")))?;
 
     let conn_map = CONNECTION_REGISTRY.lock().unwrap();
@@ -173,7 +176,7 @@ pub fn commit_or_rollback_transaction(
                 .await
                 .map_err(|e| format!("Rollback error: {}", e))?;
         }
-        if matches!(decode_mode(mode), Some(Mode::RemoteReplica)) {
+        if matches!(decode_mode(mode), Some(Mode::RemoteReplica)) && syncx == enable_sync() {
             client
                 .lock()
                 .unwrap()
@@ -182,13 +185,18 @@ pub fn commit_or_rollback_transaction(
                 .await
                 .map_err(|e| format!("Sync error: {}", e))?;
         }
+        //else
+        //no sync
 
         Ok::<_, String>(())
     });
 
     match result {
         Ok(()) => Ok((rustler::types::atom::ok(), format!("{}  success", param))),
-        Err(e) => Err(rustler::Error::Term(Box::new(e))),
+        Err(e) => Err(rustler::Error::Term(Box::new(format!(
+            "TOKIO_RUNTIME ERR {}",
+            e.to_string()
+        )))),
     }
 }
 #[rustler::nif]
@@ -299,12 +307,17 @@ fn query_args<'a>(
     env: Env<'a>,
     conn_id: &str,
     mode: Atom,
+    syncx: Atom,
     query: &str,
     args: Vec<Term<'a>>,
 ) -> Result<NifResult<Term<'a>>, rustler::Error> {
     let conn_map = CONNECTION_REGISTRY.lock().unwrap();
 
     let mut is_sync = false;
+    match detect_query_type(query) {
+        QueryType::Select => is_sync = false,
+        _ => is_sync = true,
+    }
 
     if let Some(client) = conn_map.get(conn_id) {
         let client = client.clone();
@@ -313,11 +326,6 @@ fn query_args<'a>(
             args.into_iter().map(|t| decode_term_to_value(t)).collect();
 
         let params = params.map_err(|e| rustler::Error::Term(Box::new(e)))?;
-
-        match detect_query_type(query) {
-            QueryType::Select => is_sync = false,
-            _ => is_sync = true,
-        }
 
         let result = TOKIO_RUNTIME.block_on(async {
             let res = client
@@ -339,7 +347,7 @@ fn query_args<'a>(
                         // if remote replica and a write query then sync
                         match modex {
                             Mode::RemoteReplica => {
-                                if is_sync {
+                                if is_sync && syncx == enable_sync() {
                                     let _ = client.lock().unwrap().db.sync().await;
                                 }
                             }

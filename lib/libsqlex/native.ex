@@ -4,21 +4,25 @@ defmodule LibSqlEx.Native do
     crate: :libsqlex
 
   # native bridge from rust check lib.rs
-  def query_args_replica(_conn, _query, _args), do: :erlang.nif_error(:nif_not_loaded)
   def ping(_conn), do: :erlang.nif_error(:nif_not_loaded)
   def connect(_opts, _mode), do: :erlang.nif_error(:nif_not_loaded)
-  def query_args(_conn, _mode, _query, _args), do: :erlang.nif_error(:nif_not_loaded)
+  def query_args(_conn, _mode, _query, _args, _sync), do: :erlang.nif_error(:nif_not_loaded)
   def begin_transaction(_conn), do: :erlang.nif_error(:nif_not_loaded)
   def execute_with_transaction(_trx_id, _query, _args), do: :erlang.nif_error(:nif_not_loaded)
   def handle_status_transaction(_trx_id), do: :erlang.nif_error(:nif_not_loaded)
 
-  def commit_or_rollback_transaction(_trx, _conn, _mode, _param),
+  def commit_or_rollback_transaction(_trx, _conn, _mode, _sync, _param),
     do: :erlang.nif_error(:nif_not_loaded)
 
-  def sync(_conn, _mode), do: :erlang.nif_error(:nif_not_loaded)
+  def do_sync(_conn, _mode), do: :erlang.nif_error(:nif_not_loaded)
   def close(_id, _opt), do: :erlang.nif_error(:nif_not_loaded)
 
   # helper
+
+  def sync(%LibSqlEx.State{conn_id: conn_id, mode: mode} = _state) do
+    do_sync(conn_id, mode)
+  end
+
   def close_conn(id, opt, state) do
     case close(id, opt) do
       :ok -> :ok
@@ -31,11 +35,11 @@ defmodule LibSqlEx.Native do
   end
 
   def query(
-        %LibSqlEx.State{conn_id: conn_id, mode: mode} = state,
+        %LibSqlEx.State{conn_id: conn_id, mode: mode, sync: syncx} = state,
         %LibSqlEx.Query{statement: statement} = query,
         args
       ) do
-    case query_args(conn_id, mode, statement, args) do
+    case query_args(conn_id, mode, syncx, statement, args) do
       %{
         "columns" => columns,
         "rows" => rows,
@@ -85,12 +89,14 @@ defmodule LibSqlEx.Native do
     end
   end
 
-  def commit(%LibSqlEx.State{conn_id: conn_id, trx_id: trx_id, mode: mode} = _state) do
-    commit_or_rollback_transaction(trx_id, conn_id, mode, "commit")
+  def commit(%LibSqlEx.State{conn_id: conn_id, trx_id: trx_id, mode: mode, sync: syncx} = _state) do
+    commit_or_rollback_transaction(trx_id, conn_id, mode, syncx, "commit")
   end
 
-  def rollback(%LibSqlEx.State{conn_id: conn_id, trx_id: trx_id, mode: mode} = _state) do
-    commit_or_rollback_transaction(trx_id, conn_id, mode, "rollback")
+  def rollback(
+        %LibSqlEx.State{conn_id: conn_id, trx_id: trx_id, mode: mode, sync: syncx} = _state
+      ) do
+    commit_or_rollback_transaction(trx_id, conn_id, mode, syncx, "rollback")
   end
 
   def detect_command(query) do

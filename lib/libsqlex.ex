@@ -23,7 +23,12 @@ defmodule LibSqlEx do
   def connect(opts) do
     case LibSqlEx.Native.connect(opts, LibSqlEx.State.detect_mode(opts)) do
       conn_id when is_binary(conn_id) ->
-        {:ok, %LibSqlEx.State{conn_id: conn_id, mode: LibSqlEx.State.detect_mode(opts)}}
+        {:ok,
+         %LibSqlEx.State{
+           conn_id: conn_id,
+           mode: LibSqlEx.State.detect_mode(opts),
+           sync: LibSqlEx.State.detect_sync(opts)
+         }}
 
       {:error, _} = err ->
         err
@@ -64,9 +69,16 @@ defmodule LibSqlEx do
         _opts,
         %LibSqlEx.State{conn_id: _conn_id, trx_id: trx_id, mode: _mode} = state
       ) do
-    case trx_id do
-      nil -> LibSqlEx.Native.execute_non_trx(query, state, args)
-      _ -> LibSqlEx.Native.execute_with_trx(state, query, args)
+    query_struct =
+      case query do
+        %LibSqlEx.Query{} -> query
+        query when is_binary(query) -> %LibSqlEx.Query{statement: query}
+      end
+
+    if trx_id do
+      LibSqlEx.Native.execute_with_trx(state, query_struct, args)
+    else
+      LibSqlEx.Native.execute_non_trx(query_struct, state, args)
     end
   end
 
@@ -79,6 +91,11 @@ defmodule LibSqlEx do
       {:ok, new_state} -> {:ok, :begin, new_state}
       {:error, reason} -> {:error, reason, state}
     end
+  end
+
+  @impl true
+  def handle_commit(_opts, %LibSqlEx.State{trx_id: nil} = state) do
+    {:error, %RuntimeError{message: "no active transaction"}, state}
   end
 
   @impl true

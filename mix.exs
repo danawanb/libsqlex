@@ -25,7 +25,7 @@ defmodule LibSqlEx.MixProject do
   end
 
   defp description() do
-    "Elixir database driver connection to libSQL/Turso."
+    "Unofficial Elixir database driver connection to libSQL/Turso."
   end
 
   # Run "mix help deps" to learn about dependencies.
